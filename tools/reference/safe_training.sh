@@ -20,9 +20,9 @@ select_model_size() {
 # Function to display the menu for selecting task
 select_task() {
     echo "Select task:"
-    select task in obj365 obj2coco coco; do
+    select task in obj365 obj2coco coco custom; do
         case $task in
-            obj365|obj2coco|coco)
+            obj365|obj2coco|coco|custom)
                 echo "You selected task: $task"
                 TASK=$task
                 break
@@ -61,35 +61,37 @@ ask_save_logs
 if [ "$TASK" = "coco" ]; then
     CONFIG_FILE="configs/dfine/dfine_hgnetv2_${MODEL_SIZE}_${TASK}.yml"
 else
-    CONFIG_FILE="configs/dfine/objects365/dfine_hgnetv2_${MODEL_SIZE}_${TASK}.yml"
+    CONFIG_FILE="configs/deim_dfine/object365/dfine_hgnetv2_${MODEL_SIZE}_${TASK}.yml"
 fi
 
 OUTPUT_DIR="output/${MODEL_SIZE}_${TASK}"
 
 # Construct the training command
-TRAIN_CMD="CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --master_port=7777 --nproc_per_node=4 train.py -c $CONFIG_FILE --use-amp --seed=0 --output-dir $OUTPUT_DIR"
+TRAIN_CMD="CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7777 --nproc_per_node=1 train.py -c $CONFIG_FILE --use-amp --seed=0 --output-dir $OUTPUT_DIR"
 
+echo "Training command: $TRAIN_CMD"
 # Append log redirection if SAVE_LOGS is true
 if [ "$SAVE_LOGS" = true ]; then
     LOG_FILE="${MODEL_SIZE}_${TASK}.txt"
     TRAIN_CMD="$TRAIN_CMD &> \"$LOG_FILE\" 2>&1 &"
+    echo "Logs will be saved to $LOG_FILE"
 else
     TRAIN_CMD="$TRAIN_CMD &"
 fi
 
 # Run the training command
-eval $TRAIN_CMD
+eval "$TRAIN_CMD"
 if [ $? -ne 0 ]; then
     echo "First training failed, restarting with resume option..."
     while true; do
-        RESUME_CMD="CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --master_port=7777 --nproc_per_node=4 train.py -c $CONFIG_FILE --use-amp --seed=0 --output-dir $OUTPUT_DIR -r ${OUTPUT_DIR}/last.pth"
+        RESUME_CMD="CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7777 --nproc_per_node=1 train.py -c $CONFIG_FILE --use-amp --seed=0 --output-dir $OUTPUT_DIR -r ${OUTPUT_DIR}/last.pth"
         if [ "$SAVE_LOGS" = true ]; then
             LOG_FILE="${MODEL_SIZE}_${TASK}_2.txt"
             RESUME_CMD="$RESUME_CMD &> \"$LOG_FILE\" 2>&1 &"
         else
             RESUME_CMD="$RESUME_CMD &"
         fi
-        eval $RESUME_CMD
+        eval "$RESUME_CMD"
         if [ $? -eq 0 ]; then
             break
         fi
